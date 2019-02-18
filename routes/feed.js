@@ -23,5 +23,19 @@ router.post(
   ],
   feedController.createPost
 );
+// PUT /feeds/post/:postId
+// NOTE: No validation for image because it is handled in the controller
+router.put(
+  "/post/:postId",
+  [
+    body("title")
+      .trim()
+      .isLength({ min: 7 }),
+    body("content")
+      .trim()
+      .isLength({ min: 5 })
+  ],
+  feedController.updatePost
+);
 
 module.exports = router;
