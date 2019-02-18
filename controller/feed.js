@@ -6,11 +6,24 @@ const clearImage = require("../utils/image").clearImage;
 const Post = require("../models/post");
 
 exports.getPosts = (req, res, next) => {
+  const currentPage = req.query.page || 1;
+  const ITEM_PER_PAGE = 2;
+  let totalItems;
   Post.find()
+    .countDocuments()
+    .then(total => {
+      totalItems = total;
+      return Post.find()
+        .skip((currentPage - 1) * ITEM_PER_PAGE)
+        .limit(ITEM_PER_PAGE);
+    })
     .then(posts =>
-      res.status(200).json({ message: "Get posts success", posts })
+      res.status(200).json({ message: "Get posts success", posts, totalItems })
     )
-    .catch(error => handleError(error, next));
+    .catch(err => {
+      err.statusCode = 500;
+      handleError(err, next);
+    });
 };
 
 exports.createPost = (req, res, next) => {
@@ -92,6 +105,27 @@ exports.updatePost = (req, res, next) => {
       res.status(200).json({ message: "Post updated", post: result });
     })
     .catch(err => {
-      this.handleError(err);
+      handleError(err, next);
+    });
+};
+
+exports.deletePost = (req, res, next) => {
+  const { postId } = req.params;
+  Post.findById(postId)
+    .then(post => {
+      // Check logged in user
+      if (!post) {
+        const error = new Error("No posts found.");
+        error.statusCode = 422;
+        throw error;
+      }
+      clearImage(post.imageUrl);
+      return Post.findByIdAndRemove(postId);
+    })
+    .then(result => {
+      res.status(200).json({ message: "Post deleted!" });
+    })
+    .catch(error => {
+      handleError(error, next);
     });
 };
