@@ -4,26 +4,22 @@ const handleError = require("../utils/error").handleError;
 const clearImage = require("../utils/image").clearImage;
 
 const Post = require("../models/post");
+const User = require("../models/user");
 
-exports.getPosts = (req, res, next) => {
+exports.getPosts = async (req, res, next) => {
   const currentPage = req.query.page || 1;
   const ITEM_PER_PAGE = 2;
-  let totalItems;
-  Post.find()
-    .countDocuments()
-    .then(total => {
-      totalItems = total;
-      return Post.find()
-        .skip((currentPage - 1) * ITEM_PER_PAGE)
-        .limit(ITEM_PER_PAGE);
-    })
-    .then(posts =>
-      res.status(200).json({ message: "Get posts success", posts, totalItems })
-    )
-    .catch(err => {
-      err.statusCode = 500;
-      handleError(err, next);
-    });
+  try {
+    const totalItems = await Post.find().countDocuments();
+    const posts = await Post.find()
+      .populate("creator")
+      .skip((currentPage - 1) * ITEM_PER_PAGE)
+      .limit(ITEM_PER_PAGE);
+    res.status(200).json({ message: "Get posts success", posts, totalItems });
+  } catch (error) {
+    error.statusCode = 500;
+    handleError(error, next);
+  }
 };
 
 exports.createPost = (req, res, next) => {
@@ -40,20 +36,27 @@ exports.createPost = (req, res, next) => {
   }
   const { title, content } = req.body;
   const image = req.file.path;
+  let creator;
   const post = new Post({
     title,
     content,
     imageUrl: image,
-    creator: {
-      name: "Janet Van"
-    }
+    creator: req.userId
   });
   post
     .save()
     .then(result => {
+      return User.findById(req.userId);
+    })
+    .then(user => {
+      creator = user;
+      user.posts.push(post);
+      return user.save();
+    })
+    .then(result => {
       res.status(201).json({
         message: "Post created successfully",
-        post: result
+        post
       });
     })
     .catch(err => {
@@ -93,6 +96,11 @@ exports.updatePost = (req, res, next) => {
         error.statusCode = 404;
         throw error;
       }
+      if (post.creator.toString() !== req.userId) {
+        const error = new Error("Not authenticated");
+        error.statusCode = 403;
+        throw error;
+      }
       if (post.imageUrl !== imageUrl) {
         clearImage(post.imageUrl);
       }
@@ -109,23 +117,28 @@ exports.updatePost = (req, res, next) => {
     });
 };
 
-exports.deletePost = (req, res, next) => {
+exports.deletePost = async (req, res, next) => {
   const { postId } = req.params;
-  Post.findById(postId)
-    .then(post => {
-      // Check logged in user
-      if (!post) {
-        const error = new Error("No posts found.");
-        error.statusCode = 422;
-        throw error;
-      }
-      clearImage(post.imageUrl);
-      return Post.findByIdAndRemove(postId);
-    })
-    .then(result => {
-      res.status(200).json({ message: "Post deleted!" });
-    })
-    .catch(error => {
-      handleError(error, next);
-    });
+  try {
+    const post = await Post.findById(postId);
+    if (!post) {
+      const error = new Error("No posts found.");
+      error.statusCode = 422;
+      throw error;
+    }
+    if (post.creator.toString() !== req.userId) {
+      const error = new Error("Not authenticated");
+      error.statusCode = 403;
+      throw error;
+    }
+    await clearImage(post.imageUrl);
+    console.log("Image cleared");
+    await Post.findByIdAndRemove(postId);
+    const user = await User.findById(req.userId);
+    user.posts.pull(postId);
+    await user.save();
+    return res.status(200).json({ message: "Post deleted!" });
+  } catch (error) {
+    handleError(error, next);
+  }
 };
