@@ -23,7 +23,6 @@ exports.signup = (req, res, next) => {
       return newUser.save();
     })
     .then(result => {
-      console.log({ result });
       res.status(201).json({ message: "User created", userId: result._id });
     })
     .catch(err => {
