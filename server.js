@@ -57,8 +57,12 @@ mongoose
   .connect(db, { useNewUrlParser: true })
   .then(() => {
     console.log("MongoDB connected");
-    app.listen(1000, () => {
+    const server = app.listen(1000, () => {
       console.log("App listening on port 1000!");
+    });
+    const io = require("./socket").init(server);
+    io.on("connection", socket => {
+      console.log("Client connected");
     });
   })
   .catch(err => console.log("Cannot connect to MongoDB: ", err));
